@@ -1,0 +1,119 @@
+name: Git laboratory
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: git-laboratory
+  cancel-in-progress: false
+jobs:
+  laboratory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Execute and verify Git exercises
+        shell: python
+        env:
+          AUTHOR_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
+        run: |
+          import os
+          import subprocess
+          from pathlib import Path
+          
+          def git(*args, check=True, input=None, env=None):
+              print("+ git " + " ".join(args), flush=True)
+              r = subprocess.run(["git", *args], text=True, input=input, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+              print(r.stdout, flush=True)
+              if check and r.returncode:
+                  raise RuntimeError("Git command failed")
+              return r
+          
+          def write(name, text):
+              Path(name).write_text(text, encoding="utf-8")
+          
+          git("config", "user.name", "Быков Петр")
+          git("config", "user.email", os.environ["AUTHOR_EMAIL"])
+          git("switch", "main")
+          for branch in ("config", "config_theme", "page"):
+              if git("ls-remote", "--heads", "origin", branch).stdout.strip():
+                  raise RuntimeError("Lab branch already exists; refusing to overwrite: " + branch)
+          
+          base = "title: Быков Петр\ndescription: Персональная страница — лабораторная работа по Git.\n"
+          theme = "theme: jekyll-theme-hacker\n"
+          git("switch", "-c", "config")
+          write("_config.yml", base)
+          git("add", "_config.yml")
+          git("diff", "--staged")
+          git("commit", "-m", "Add base jekyll configuration")
+          git("switch", "main")
+          git("switch", "-c", "config_theme")
+          write("_config.yml", theme)
+          git("add", "_config.yml")
+          git("commit", "-m", "Add jekyll theme")
+          git("log", "--graph", "--oneline", "--all")
+          git("switch", "config")
+          r = git("merge", "config_theme", check=False)
+          assert r.returncode == 1
+          assert "<<<<<<<" in Path("_config.yml").read_text()
+          print("Expected add/add conflict reproduced.")
+          write("_config.yml", base + theme)
+          git("add", "_config.yml")
+          git("merge", "--continue", env=dict(os.environ, GIT_EDITOR="true"))
+          git("log", "--graph", "--oneline", "--all")
+          git("switch", "main")
+          git("switch", "-c", "page")
+          body = """# Обо мне
+          
+          Меня зовут Быков Петр. Я изучаю программирование и математику.
+          
+          ## Учёба
+          
+          На практикуме по работе с компьютером осваиваю Git: создание веток,
+          коммиты, разрешение конфликтов, перебазирование и работу с GitHub.
+          
+          ## Эта страница
+          
+          Страница написана на Markdown и опубликована с помощью Jekyll и GitHub Pages.
+          
+          ## Контакты
+          
+          - GitHub: [CasterFP](https://github.com/CasterFP)
+          """
+          write("index.md", body)
+          git("add", "index.md")
+          git("commit", "-m", "Add personal page")
+          body += """
+          ## Что хочу изучить дальше
+          
+          - Совместную разработку с помощью Pull Request.
+          - Организацию проектов и понятную историю изменений.
+          - Автоматическую проверку и публикацию проектов.
+          """
+          write("index.md", body)
+          git("add", "index.md")
+          git("commit", "--amend", "--no-edit")
+          write("index.md", "---\nlayout: default\n---\n\n" + body)
+          git("add", "-p", "index.md", input="y\n")
+          git("commit", "-m", "Add layout to personal page")
+          git("log", "--graph", "--oneline", "--all")
+          editor = Path(os.environ["RUNNER_TEMP"]) / "lab-sequence-editor.py"
+          editor.write_text("#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\np=Path(sys.argv[1])\ns=p.read_text().splitlines(True)\nn=0\nfor i,l in enumerate(s):\n if l.startswith('pick '):\n  n+=1\n  if n>1: s[i]='squash '+l[5:]\np.write_text(''.join(s))\n")
+          editor.chmod(0o700)
+          message = Path(os.environ["RUNNER_TEMP"]) / "lab-message-editor.py"
+          message.write_text("#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text('Add personal page\\n')\n")
+          message.chmod(0o700)
+          git("rebase", "-i", "config", env=dict(os.environ, GIT_SEQUENCE_EDITOR=str(editor), GIT_EDITOR=str(message)))
+          git("log", "--graph", "--oneline", "--all")
+          git("show")
+          assert git("rev-list", "--count", "config..page").stdout.strip() == "1"
+          assert git("status", "--porcelain").stdout.strip() == ""
+          assert Path("_config.yml").read_text() == base + theme
+          assert Path("index.md").read_text().startswith("---\nlayout: default\n---\n")
+          git("push", "--atomic", "--set-upstream", "origin", "config", "config_theme", "page")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("## Git laboratory completed\n\nBranches: config, config_theme, page.\n\nReal add/add conflict resolved; amend and interactive rebase with squash completed.\n\nNext: merge page into main using a GitHub Pull Request (Squash and merge), then enable Pages from main.\n")
+          
