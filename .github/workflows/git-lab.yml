@@ -66,32 +66,21 @@ jobs:
           git("log", "--graph", "--oneline", "--all")
           git("switch", "main")
           git("switch", "-c", "page")
-          body = """# Обо мне
-          
-          Меня зовут Быков Петр. Я изучаю программирование и математику.
-          
-          ## Учёба
-          
-          На практикуме по работе с компьютером осваиваю Git: создание веток,
-          коммиты, разрешение конфликтов, перебазирование и работу с GitHub.
-          
-          ## Эта страница
-          
-          Страница написана на Markdown и опубликована с помощью Jekyll и GitHub Pages.
-          
+          body = """
+          ## Образование
+          - Студент бакалавриата СПбГУ по направлению «Технологии программирования»          
           ## Контакты
-          
-          - GitHub: [CasterFP](https://github.com/CasterFP)
+
+          e-mail: petabykov14@gmail.com
+          telegram: @peter_phys (https://t.me/@peter_phys)
           """
           write("index.md", body)
           git("add", "index.md")
           git("commit", "-m", "Add personal page")
           body += """
-          ## Что хочу изучить дальше
-          
-          - Совместную разработку с помощью Pull Request.
-          - Организацию проектов и понятную историю изменений.
-          - Автоматическую проверку и публикацию проектов.
+          ## About me
+
+          Programmer and student.
           """
           write("index.md", body)
           git("add", "index.md")
